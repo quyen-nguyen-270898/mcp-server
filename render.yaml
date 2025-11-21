@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: youtube-audio-streamer
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python server.py
+    envVars:
+      - key: YOUTUBE_API_KEY
+        sync: false
+      - key: PORT
+        value: 10000

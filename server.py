@@ -1,161 +1,230 @@
+"""Simple YouTube search microservice.
+
+Provides /search endpoint returning metadata (videoId, title, thumbnails, watchUrl, embedUrl)
+and DOES NOT attempt to bypass YouTube anti‑bot or extract raw audio stream URLs that would
+violate YouTube Terms of Service. To play audio, use the official watch or embed URL client-side.
+
+Environment variables:
+  YOUTUBE_API_KEY  (required) Your YouTube Data API v3 key.
+  PORT             (optional) Port to bind, default 5000.
+
+Run: python server.py
+"""
+
 import os
-import json
-import subprocess
-from flask import Flask, request, jsonify
-from functools import wraps
 import logging
+from typing import List, Dict, Any
+from flask import Flask, request, jsonify, send_file, abort
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
+from flask_cors import CORS
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("youtube-search-service")
 
 app = Flask(__name__)
+CORS(app, resources={r"/*": {"origins": "*"}})
 
-# Setup logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY")
+if not YOUTUBE_API_KEY:
+	logger.warning("YOUTUBE_API_KEY not set – /search will return 500 until provided.")
 
-# Configuration
-PORT = int(os.environ.get('PORT', 5000))
-API_KEY = os.environ.get('API_KEY', '')  # Optional: Add API key for security
+def youtube_search(q: str, max_results: int = 5) -> List[Dict[str, Any]]:
+	"""Call YouTube Data API to search videos by query string.
 
-def require_api_key(f):
-    """Decorator to check API key if set"""
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if API_KEY and request.args.get('key') != API_KEY:
-            return jsonify({'error': 'Unauthorized'}), 401
-        return f(*args, **kwargs)
-    return decorated_function
+	Returns a list of result dicts containing videoId, title, thumbnails, watchUrl, embedUrl.
+	"""
+	service = build("youtube", "v3", developerKey=YOUTUBE_API_KEY)
+	logger.info("Executing YouTube search: '%s' (max=%d)", q, max_results)
+	response = service.search().list(
+		q=q,
+		part="snippet",
+		type="video",
+		maxResults=max_results,
+		safeSearch="none",
+	).execute()
 
-def get_soundcloud_stream(url):
-    """
-    Extract audio stream URL from SoundCloud link using yt-dlp
-    
-    Args:
-        url (str): SoundCloud URL
-        
-    Returns:
-        dict: Contains stream_url and metadata or error message
-    """
-    try:
-        # Use yt-dlp to extract stream information
-        cmd = [
-            'yt-dlp',
-            '-f', 'best[ext=m4a]/best',  # Get best audio format
-            '-j',  # Output as JSON
-            '--no-warnings',
-            url
-        ]
-        
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-        
-        if result.returncode != 0:
-            logger.error(f"yt-dlp error: {result.stderr}")
-            return {
-                'success': False,
-                'error': 'Failed to extract stream URL',
-                'details': result.stderr
-            }
-        
-        data = json.loads(result.stdout)
-        
-        # Extract relevant information
-        response = {
-            'success': True,
-            'stream_url': data.get('url'),
-            'title': data.get('title'),
-            'duration': data.get('duration'),
-            'artist': data.get('uploader'),
-            'thumbnail': data.get('thumbnail'),
-            'ext': data.get('ext'),
-        }
-        
-        return response
-        
-    except json.JSONDecodeError as e:
-        logger.error(f"JSON parse error: {e}")
-        return {
-            'success': False,
-            'error': 'Invalid response from stream extractor'
-        }
-    except subprocess.TimeoutExpired:
-        return {
-            'success': False,
-            'error': 'Request timeout - URL extraction took too long'
-        }
-    except Exception as e:
-        logger.error(f"Unexpected error: {str(e)}")
-        return {
-            'success': False,
-            'error': str(e)
-        }
+	results = []
+	for item in response.get("items", []):
+		vid = item["id"].get("videoId")
+		snippet = item.get("snippet", {})
+		if not vid:
+			continue
+		results.append({
+			"videoId": vid,
+			"title": snippet.get("title"),
+			"description": snippet.get("description"),
+			"channelTitle": snippet.get("channelTitle"),
+			"publishedAt": snippet.get("publishedAt"),
+			"thumbnails": snippet.get("thumbnails", {}),
+			"watchUrl": f"https://www.youtube.com/watch?v={vid}",
+			"embedUrl": f"https://www.youtube.com/embed/{vid}",
+		})
+	return results
 
-@app.route('/', methods=['GET'])
-def index():
-    """Health check endpoint"""
-    return jsonify({
-        'status': 'running',
-        'service': 'SoundCloud Stream URL Extractor',
-        'version': '1.0',
-        'usage': {
-            'endpoint': '/stream',
-            'method': 'POST',
-            'body': {
-                'url': 'https://soundcloud.com/...'
-            },
-            'example': 'curl -X POST http://localhost:5000/stream -H "Content-Type: application/json" -d \'{"url":"https://soundcloud.com/..."}\''
-        }
-    })
+@app.get("/health")
+def health() -> Any:
+	return {"status": "ok"}
 
-@app.route('/stream', methods=['POST'])
-@require_api_key
-def get_stream():
-    """
-    Get audio stream URL from SoundCloud
-    
-    Request body:
-    {
-        "url": "https://soundcloud.com/user/track-name"
-    }
-    """
-    try:
-        data = request.get_json()
-        
-        if not data or 'url' not in data:
-            return jsonify({'error': 'Missing URL in request body'}), 400
-        
-        url = data['url'].strip()
-        
-        # Validate URL
-        if 'soundcloud.com' not in url:
-            return jsonify({'error': 'URL must be a valid SoundCloud link'}), 400
-        
-        logger.info(f"Processing SoundCloud URL: {url}")
-        
-        result = get_soundcloud_stream(url)
-        
-        if result['success']:
-            return jsonify(result), 200
-        else:
-            return jsonify(result), 400
-            
-    except Exception as e:
-        logger.error(f"Error in /stream endpoint: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+@app.get("/search")
+def search() -> Any:
+	if not YOUTUBE_API_KEY:
+		return jsonify({"error": "Server missing YOUTUBE_API_KEY"}), 500
 
-@app.route('/health', methods=['GET'])
-def health_check():
-    """Health check for Render deployment"""
-    return jsonify({'status': 'ok'}), 200
+	query = request.args.get("query", "").strip()
+	if not query:
+		return jsonify({"error": "Missing query parameter 'query'"}), 400
+	if len(query) > 200:
+		return jsonify({"error": "Query too long"}), 400
 
-@app.errorhandler(404)
-def not_found(error):
-    return jsonify({'error': 'Endpoint not found'}), 404
+	max_results_raw = request.args.get("max", "5")
+	try:
+		max_results = int(max_results_raw)
+	except ValueError:
+		return jsonify({"error": "Invalid max parameter"}), 400
+	if not (1 <= max_results <= 25):
+		return jsonify({"error": "max must be between 1 and 25"}), 400
 
-@app.errorhandler(500)
-def server_error(error):
-    return jsonify({'error': 'Internal server error'}), 500
+	try:
+		items = youtube_search(query, max_results=max_results)
+	except HttpError as e:
+		logger.exception("YouTube API error")
+		return jsonify({"error": "YouTube API error", "details": str(e)}), 502
+	except Exception as e:  # noqa: BLE001 keep broad for a small service
+		logger.exception("Unexpected error during search")
+		return jsonify({"error": "Internal error", "details": str(e)}), 500
 
-if __name__ == '__main__':
-    app.run(
-        host='0.0.0.0',
-        port=PORT,
-        debug=False
-    )
+	lite = request.args.get("lite", "false").lower() in {"1", "true", "yes"}
+	if lite:
+		lite_items = [
+			{
+				"videoId": i["videoId"],
+				"title": i["title"],
+				"embedUrl": i["embedUrl"],
+			}
+			for i in items
+		]
+		return jsonify({
+			"query": query,
+			"count": len(lite_items),
+			"results": lite_items,
+			"mode": "lite",
+			"note": "Lite mode: only identifiers and embed URL returned."
+		})
+
+	return jsonify({
+		"query": query,
+		"count": len(items),
+		"results": items,
+		"mode": "full",
+		"note": "Use watchUrl or embedUrl client-side. Direct audio stream URLs are intentionally not exposed to comply with YouTube Terms of Service."
+	})
+
+@app.get("/play")
+def play() -> Any:
+	"""Return minimal embed metadata for a given videoId.
+
+	Client can embed via IFrame: <iframe src=embedUrl allow="autoplay"></iframe>
+	This avoids scraping or attempting to obtain raw audio stream URLs.
+	"""
+	if not YOUTUBE_API_KEY:
+		return jsonify({"error": "Server missing YOUTUBE_API_KEY"}), 500
+	video_id = request.args.get("videoId", "").strip()
+	if not video_id:
+		return jsonify({"error": "Missing videoId parameter"}), 400
+
+	# Fetch snippet for single video to get title (Videos.list endpoint)
+	try:
+		service = build("youtube", "v3", developerKey=YOUTUBE_API_KEY)
+		resp = service.videos().list(part="snippet", id=video_id).execute()
+		items = resp.get("items", [])
+		if not items:
+			return jsonify({"error": "videoId not found"}), 404
+		snippet = items[0].get("snippet", {})
+		data = {
+			"videoId": video_id,
+			"title": snippet.get("title"),
+			"embedUrl": f"https://www.youtube.com/embed/{video_id}",
+			"watchUrl": f"https://www.youtube.com/watch?v={video_id}",
+			"thumbnails": snippet.get("thumbnails", {}),
+			"channelTitle": snippet.get("channelTitle"),
+			"note": "Provide embedUrl to client. Do not request raw audio stream URLs.",
+		}
+		return jsonify(data)
+	except HttpError as e:
+		logger.exception("YouTube API error while /play")
+		return jsonify({"error": "YouTube API error", "details": str(e)}), 502
+	except Exception as e:  # noqa: BLE001
+		logger.exception("Unexpected error during /play")
+		return jsonify({"error": "Internal error", "details": str(e)}), 500
+
+# Audio file serving (user-provided lawful audio files)
+ALLOWED_AUDIO_EXT = {".mp3", ".ogg", ".wav", ".m4a"}
+AUDIO_DIR = os.getenv("AUDIO_DIR", os.path.join(os.getcwd(), "audio"))
+
+def _list_audio_files() -> List[Dict[str, Any]]:
+	if not os.path.isdir(AUDIO_DIR):
+		return []
+	entries: List[Dict[str, Any]] = []
+	for name in os.listdir(AUDIO_DIR):
+		lower = name.lower()
+		ext = os.path.splitext(lower)[1]
+		if ext in ALLOWED_AUDIO_EXT:
+			file_id = os.path.splitext(name)[0]
+			entries.append({
+				"id": file_id,
+				"filename": name,
+				"streamUrl": f"/stream/{file_id}",
+			})
+	return sorted(entries, key=lambda x: x["id"])
+
+@app.get("/tracks")
+def tracks() -> Any:
+	"""List available audio tracks stored in AUDIO_DIR.
+
+	Only exposes user-provided files; does not fetch or transcode YouTube.
+	"""
+	items = _list_audio_files()
+	return jsonify({
+		"count": len(items),
+		"results": items,
+		"note": "Files served are user-provided. No YouTube raw stream extraction performed.",
+	})
+
+@app.get("/stream/<track_id>")
+def stream(track_id: str) -> Any:
+	"""Serve a single audio file by its id (filename without extension).
+
+	Path sanitization prevents directory traversal. Only whitelisted extensions are served.
+	ESP32 can consume via simple HTTP GET progressive download.
+	"""
+	if not track_id:
+		return jsonify({"error": "Missing track id"}), 400
+	if any(ch in track_id for ch in ("/", "\\", "..")):
+		return jsonify({"error": "Invalid track id"}), 400
+	if not os.path.isdir(AUDIO_DIR):
+		return jsonify({"error": "Audio directory not found"}), 404
+	# Find matching file with allowed extension
+	for name in os.listdir(AUDIO_DIR):
+		base, ext = os.path.splitext(name)
+		if base == track_id and ext.lower() in ALLOWED_AUDIO_EXT:
+			file_path = os.path.join(AUDIO_DIR, name)
+			mimetype = "audio/mpeg" if ext.lower() == ".mp3" else (
+				"audio/ogg" if ext.lower() == ".ogg" else (
+					"audio/wav" if ext.lower() == ".wav" else "audio/mp4"
+				)
+			)
+			try:
+				return send_file(file_path, mimetype=mimetype, conditional=True)
+			except FileNotFoundError:
+				abort(404)
+	return jsonify({"error": "Track not found"}), 404
+
+def main() -> None:
+	port = int(os.getenv("PORT", "5000"))
+	host = "0.0.0.0"
+	logger.info("Starting server on %s:%d", host, port)
+	app.run(host=host, port=port)
+
+if __name__ == "__main__":
+	main()
