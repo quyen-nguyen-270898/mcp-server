@@ -1,0 +1,29 @@
+{
+  "mcpServers": {
+    "local-stdio-calculator": {
+      "type": "stdio",
+      "command": "python",
+      "args": ["-m", "calculator"]
+    },
+    "local-stdio-google-search": {
+      "type": "stdio",
+      "command": "python",
+      "args": ["-m", "google_search"]
+    },
+    "local-stdio-news-service": {
+      "type": "stdio",
+      "command": "python",
+      "args": ["-m", "news_service"]
+    },
+    "remote-sse-server": {
+      "type": "sse",
+      "url": "https://api.example.com/sse",
+      "disabled": true
+    },
+    "remote-http-server": {
+      "type": "http",
+      "url": "https://api.example.com/mcp",
+      "disabled": true
+    }
+  }
+}

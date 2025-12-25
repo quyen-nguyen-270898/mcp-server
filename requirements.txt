@@ -1,4 +1,9 @@
-Flask==3.0.0
-google-api-python-client==2.137.0
-requests==2.32.3
-Flask-Cors==4.0.0
+python-dotenv>=1.2.1
+websockets>=15.0.1
+mcp>=1.20.0
+pydantic>=2.12.3
+mcp-proxy>=0.10.0
+fastmcp>=2.13.0.2
+ddgs>=9.10.0
+feedparser>=6.0.10
+requests>=2.31.0

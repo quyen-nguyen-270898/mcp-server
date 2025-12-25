@@ -1,82 +1,189 @@
-# YouTube Search & Local Audio Stream Service
+# MCP Sample Project | MCP 示例项目
 
-This service provides two groups of functionality:
+A powerful interface for extending AI capabilities through remote control, calculations, email operations, knowledge search, and more.
 
-1. YouTube search metadata (no raw audio stream extraction).
-2. Streaming of user-provided lawful audio files for embedded devices (e.g. ESP32).
+一个强大的接口，用于通过远程控制、计算、邮件操作、知识搜索等方式扩展AI能力。
 
-## Endpoints
+## Overview | 概述
 
-### Health
-`GET /health` – Basic uptime check.
+MCP (Model Context Protocol) is a protocol that allows servers to expose tools that can be invoked by language models. Tools enable models to interact with external systems, such as querying databases, calling APIs, or performing computations. Each tool is uniquely identified by a name and includes metadata describing its schema.
 
-### YouTube Search
-`GET /search?query=...&max=5&lite=true`
-- Returns video metadata (videoId, title, thumbnails, watchUrl, embedUrl).
-- `lite=true` reduces payload to only `videoId`, `title`, `embedUrl`.
+MCP（模型上下文协议）是一个允许服务器向语言模型暴露可调用工具的协议。这些工具使模型能够与外部系统交互，例如查询数据库、调用API或执行计算。每个工具都由一个唯一的名称标识，并包含描述其模式的元数据。
 
-### YouTube Single Video Metadata
-`GET /play?videoId=VIDEO_ID`
-- Returns minimal metadata for embedding.
-- Use an `<iframe>` with the `embedUrl` on a client that can render HTML.
+## Features | 特性
 
-### List Local Audio Tracks
-`GET /tracks`
-- Scans `AUDIO_DIR` (default: `./audio`) for files with extensions: `.mp3`, `.ogg`, `.wav`, `.m4a`.
-- Returns JSON with `id` and `streamUrl` for each track.
+- 🔌 Bidirectional communication between AI and external tools | AI与外部工具之间的双向通信
+- 🔄 Automatic reconnection with exponential backoff | 具有指数退避的自动重连机制
+- 📊 Real-time data streaming | 实时数据流传输
+- 🛠️ Easy-to-use tool creation interface | 简单易用的工具创建接口
+- 🔒 Secure WebSocket communication | 安全的WebSocket通信
+- ⚙️ Multiple transport types support (stdio/sse/http) | 支持多种传输类型（stdio/sse/http）
 
-### Stream Local Audio Track
-`GET /stream/<id>`
-- Serves the matching audio file (`id` = filename without extension).
-- Appropriate MIME type set (audio/mpeg, audio/ogg, audio/wav, audio/mp4).
-- Intended for devices like ESP32 performing progressive HTTP reads.
+## Quick Start | 快速开始
 
-## Environment Variables
-`YOUTUBE_API_KEY` – Required for YouTube Data API search/play endpoints.
-`PORT` – Server port (default 5000).
-`AUDIO_DIR` – Directory containing your audio files (default `./audio`).
-
-## Running Locally
+1. Install dependencies | 安装依赖:
 ```bash
-export YOUTUBE_API_KEY=YOUR_KEY
-mkdir -p audio
-# Place demo1.mp3 (lawful file) into audio/demo1.mp3
 pip install -r requirements.txt
-python server.py
 ```
 
-Test:
+2. Set up environment variables | 设置环境变量:
 ```bash
-curl "http://localhost:5000/search?query=lofi&lite=true"
-curl "http://localhost:5000/tracks"
-curl "http://localhost:5000/stream/demo1" --output demo1.mp3
+export MCP_ENDPOINT=<your_mcp_endpoint>
 ```
 
-## ESP32 Consumption (Pseudo-Code)
-```c
-// Using esp_http_client to stream MP3
-esp_http_client_config_t config = {
-    .url = "http://your-domain/stream/demo1",
-    .method = HTTP_METHOD_GET,
-};
-esp_http_client_handle_t client = esp_http_client_init(&config);
-esp_http_client_open(client, 0);
-int read;
-while ((read = esp_http_client_read(client, (char*)buffer, BUFFER_SIZE)) > 0) {
-    // feed buffer to audio decoder / I2S
+3. Run the calculator example | 运行计算器示例:
+```bash
+python mcp_pipe.py calculator.py
+```
+
+Or run the Google search tool | 或运行Google搜索工具:
+```bash
+python mcp_pipe.py google_search.py
+```
+
+Or run the News service | 或运行新闻服务:
+```bash
+python mcp_pipe.py news_service.py
+```
+
+Or run all configured servers | 或运行所有配置的服务:
+```bash
+python mcp_pipe.py
+```
+
+*Requires `mcp_config.json` configuration file with server definitions (supports stdio/sse/http transport types)*
+
+*需要 `mcp_config.json` 配置文件定义服务器（支持 stdio/sse/http 传输类型）*
+
+## Project Structure | 项目结构
+
+- `mcp_pipe.py`: Main communication pipe that handles WebSocket connections and process management | 处理WebSocket连接和进程管理的主通信管道
+- `calculator.py`: Example MCP tool implementation for mathematical calculations | 用于数学计算的MCP工具示例实现
+- `google_search.py`: Google search tool for retrieving search results | Google搜索工具，用于检索搜索结果
+- `news_service.py`: News service tool for fetching latest news and current events | 新闻服务工具，用于获取最新新闻和时事
+- `requirements.txt`: Project dependencies | 项目依赖
+
+## Config-driven Servers | 通过配置驱动的服务
+
+编辑 `mcp_config.json` 文件来配置服务器列表（也可设置 `MCP_CONFIG` 环境变量指向其他配置文件）。
+
+配置说明：
+- 无参数时启动所有配置的服务（自动跳过 `disabled: true` 的条目）
+- 有参数时运行单个本地脚本文件
+- `type=stdio` 直接启动；`type=sse/http` 通过 `python -m mcp_proxy` 代理
+
+## Creating Your Own MCP Tools | 创建自己的MCP工具
+
+Here's a simple example of creating an MCP tool | 以下是一个创建MCP工具的简单示例:
+
+```python
+from fastmcp import FastMCP
+
+mcp = FastMCP("YourToolName")
+
+@mcp.tool()
+def your_tool(parameter: str) -> dict:
+    """Tool description here"""
+    # Your implementation
+    return {"success": True, "result": result}
+
+if __name__ == "__main__":
+    mcp.run(transport="stdio")
+```
+
+### Google Search Tool Example | Google搜索工具示例
+
+The `google_search.py` tool demonstrates how to integrate external APIs with MCP | `google_search.py` 工具展示了如何将外部API与MCP集成:
+
+**Tool Function | 工具函数**: `search_google(query, num_results=5, lang="vi")`
+
+**Parameters | 参数**:
+- `query` (str): Search query string | 搜索查询字符串
+- `num_results` (int, optional): Number of results (1-10, default: 5) | 结果数量（1-10，默认：5）
+- `lang` (str, optional): Language code ("vi" for Vietnamese, "en" for English) | 语言代码（"vi"越南语，"en"英语）
+
+**Returns | 返回值**:
+```json
+{
+  "success": true,
+  "query": "python programming",
+  "total_results": 5,
+  "results": [
+    {"rank": 1, "url": "https://www.python.org/"},
+    {"rank": 2, "url": "https://docs.python.org/"},
+    ...
+  ]
 }
-esp_http_client_cleanup(client);
 ```
 
-## Compliance & Limitations
-- Service does NOT expose raw YouTube audio stream URLs (DASH/HLS) to comply with Terms of Service.
-- All audio served via `/stream` must be files you have the rights to distribute.
-- Attempting to add YouTube media extraction code is discouraged and may lead to blocking or legal issues.
+**Usage via DeepSeek/ESP32 | 通过DeepSeek/ESP32使用**:
+The AI model (DeepSeek) can automatically call this tool when users ask search-related questions. Results are optimized for ESP32 display with compact JSON format.
 
-## Extending
-- Add simple auth (e.g. bearer token) by checking headers in `/stream`.
-- Add rate limiting or caching for search responses.
-- Add metadata JSON alongside audio files (e.g. `demo1.json`).
+AI模型（DeepSeek）可在用户提出搜索相关问题时自动调用此工具。结果采用紧凑的JSON格式，针对ESP32显示进行了优化。
 
-## License
-No license headers were added. Provide one if you plan to open source.
+**Example queries that trigger the tool | 触发工具的示例查询**:
+- "Search for ESP32 tutorials" / "Tìm kiếm hướng dẫn ESP32"
+- "Find information about Python" / "Tìm thông tin về Python"
+- "What are the latest AI news?" / "Tin tức AI mới nhất?"
+
+For detailed usage guide, see [SEARCH_GUIDE.md](SEARCH_GUIDE.md).
+
+详细使用指南，请参阅 [SEARCH_GUIDE.md](SEARCH_GUIDE.md)。
+
+### News Service Tool | 新闻服务工具
+
+The `news_service.py` tool provides specialized access to latest news and current events | `news_service.py` 工具提供专门的最新新闻和时事访问:
+
+**Tool Function | 工具函数**: `get_latest_news(keywords, max_results=5, timelimit="d", region="vn-vi")`
+
+**Parameters | 参数**:
+- `keywords` (str, optional): News keywords or topic | 新闻关键词或主题
+- `max_results` (int, optional): Number of articles (1-10, default: 5) | 文章数量（1-10，默认：5）
+- `timelimit` (str, optional): Time range - "d"(day), "w"(week), "m"(month) | 时间范围
+- `region` (str, optional): Region code ("vn-vi", "en-us", etc.) | 地区代码
+
+**Example queries | 查询示例**:
+- "Tin tức mới nhất" → Get latest Vietnamese news | 获取越南最新新闻
+- "Technology news today" → Get tech news | 获取科技新闻
+- "Tin công nghệ AI" → Get AI tech news in Vietnamese | 获取越南语AI科技新闻
+
+For detailed usage guide, see [NEWS_GUIDE.md](NEWS_GUIDE.md).
+
+详细使用指南，请参阅 [NEWS_GUIDE.md](NEWS_GUIDE.md)。
+
+## Use Cases | 使用场景
+
+- Mathematical calculations | 数学计算
+- **Google search integration | Google搜索集成**
+- **Latest news and current events | 最新新闻和时事**
+- Email operations | 邮件操作
+- Knowledge base search | 知识库搜索
+- Remote device control | 远程设备控制
+- Data processing | 数据处理
+- Custom tool integration | 自定义工具集成
+
+## Requirements | 环境要求
+
+- Python 3.7+
+- websockets>=11.0.3
+- python-dotenv>=1.0.0
+- mcp>=1.8.1
+- pydantic>=2.11.4
+- mcp-proxy>=0.8.2
+
+## Contributing | 贡献指南
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+欢迎贡献代码！请随时提交Pull Request。
+
+## License | 许可证
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+本项目采用MIT许可证 - 详情请查看LICENSE文件。
+
+## Acknowledgments | 致谢
+
+- Thanks to all contributors who have helped shape this project | 感谢所有帮助塑造这个项目的贡献者
+- Inspired by the need for extensible AI capabilities | 灵感来源于对可扩展AI能力的需求
