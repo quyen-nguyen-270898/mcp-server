@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: mcp-server
+    env: python
+    region: singapore  # Hoặc oregon, frankfurt tùy khu vực bạn muốn
+    plan: free  # Hoặc starter, standard, pro
+    buildCommand: pip install -r requirements.txt
+    startCommand: python web_server.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11
+      - key: PORT
+        sync: false  # Render tự động set PORT
+    # Thêm environment variables khác nếu cần
+    # - key: GOOGLE_API_KEY
+    #   sync: false

@@ -7,3 +7,5 @@ fastmcp>=2.13.0.2
 ddgs>=9.10.0
 feedparser>=6.0.10
 requests>=2.31.0
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
