@@ -5,12 +5,12 @@ services:
     region: singapore  # Hoặc oregon, frankfurt tùy khu vực bạn muốn
     plan: free  # Hoặc starter, standard, pro
     buildCommand: pip install -r requirements.txt
-    startCommand: python web_server.py
+    startCommand: python run_mcp_hub.py
     envVars:
       - key: PYTHON_VERSION
         value: 3.11
       - key: PORT
         sync: false  # Render tự động set PORT
-    # Thêm environment variables khác nếu cần
+    # Thêm environment variables khác nếu cần (Google API keys, etc.)
     # - key: GOOGLE_API_KEY
     #   sync: false

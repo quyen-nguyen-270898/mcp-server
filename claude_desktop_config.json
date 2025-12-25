@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "calculator": {
+      "url": "https://mcp-server-ti4c.onrender.com/sse/calculator",
+      "transport": "sse"
+    },
+    "news_service": {
+      "url": "https://mcp-server-ti4c.onrender.com/sse/news_service",
+      "transport": "sse"
+    },
+    "google_search": {
+      "url": "https://mcp-server-ti4c.onrender.com/sse/google_search",
+      "transport": "sse"
+    }
+  }
+}

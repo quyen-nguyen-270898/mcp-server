@@ -3,27 +3,38 @@
     "local-stdio-calculator": {
       "type": "stdio",
       "command": "python",
-      "args": ["-m", "calculator"]
+      "args": ["-m", "calculator"],
+      "disabled": true,
+      "comment": "Local stdio - requires mcp_pipe.py bridge"
     },
     "local-stdio-google-search": {
       "type": "stdio",
       "command": "python",
-      "args": ["-m", "google_search"]
+      "args": ["-m", "google_search"],
+      "disabled": true,
+      "comment": "Local stdio - requires mcp_pipe.py bridge"
     },
     "local-stdio-news-service": {
       "type": "stdio",
       "command": "python",
-      "args": ["-m", "news_service"]
+      "args": ["-m", "news_service"],
+      "disabled": true,
+      "comment": "Local stdio - requires mcp_pipe.py bridge"
     },
-    "remote-sse-server": {
+    "render-calculator": {
       "type": "sse",
-      "url": "https://api.example.com/sse",
-      "disabled": true
+      "url": "https://mcp-server-ti4c.onrender.com/sse/calculator",
+      "comment": "Calculator on Render with SSE transport"
     },
-    "remote-http-server": {
-      "type": "http",
-      "url": "https://api.example.com/mcp",
-      "disabled": true
+    "render-news-service": {
+      "type": "sse",
+      "url": "https://mcp-server-ti4c.onrender.com/sse/news_service",
+      "comment": "News Service on Render with SSE transport"
+    },
+    "render-google-search": {
+      "type": "sse",
+      "url": "https://mcp-server-ti4c.onrender.com/sse/google_search",
+      "comment": "Google Search on Render with SSE transport"
     }
   }
 }
